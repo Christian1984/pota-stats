@@ -32,7 +32,7 @@ COPY apps/web/package.json ./apps/web/package.json
 COPY tsconfig.base.json ./
 COPY packages/db/src ./packages/db/src
 COPY apps/web/next.config.ts ./apps/web/next.config.ts
-COPY apps/web/public ./apps/web/public
+RUN mkdir -p ./apps/web/public
 COPY --from=builder /app/apps/web/.next ./apps/web/.next
 EXPOSE 3000
 ENV PORT=3000
