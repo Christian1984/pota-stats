@@ -12,14 +12,15 @@ const SpotMap = dynamic(
 );
 
 const PRESETS = [
-  { label: "1d",   days: 1 },
-  { label: "7d",   days: 7 },
-  { label: "30d",  days: 30 },
-  { label: "90d",  days: 90 },
-  { label: "1y",   days: 365 },
+  { label: "1d",  days: 1 },
+  { label: "7d",  days: 7 },
+  { label: "30d", days: 30 },
+  { label: "90d", days: 90 },
+  { label: "1y",  days: 365 },
 ] as const;
 
 type PresetLabel = (typeof PRESETS)[number]["label"] | "custom";
+type ChartId = "hour" | "dow" | "band" | "mode" | "region";
 
 function toISODate(d: Date) {
   return d.toISOString().slice(0, 10);
@@ -30,7 +31,8 @@ export default function Dashboard() {
 
   const [preset, setPreset] = useState<PresetLabel>("30d");
   const [customFrom, setCustomFrom] = useState(() => toISODate(new Date(Date.now() - 30 * 86_400_000)));
-  const [customTo, setCustomTo]   = useState(() => toISODate(new Date()));
+  const [customTo, setCustomTo] = useState(() => toISODate(new Date()));
+  const [activeFilter, setActiveFilter] = useState<{ chartId: ChartId; value: string } | null>(null);
 
   const { from, to } = useMemo(() => {
     if (preset === "custom") {
@@ -46,32 +48,43 @@ export default function Dashboard() {
     };
   }, [preset, customFrom, customTo]);
 
-  const utils    = trpc.useUtils();
-  const stats    = trpc.spots.stats.useQuery();
-  const byHour   = trpc.spots.byHour.useQuery({ from, to, timezone });
-  const byWeekday = trpc.spots.byWeekday.useQuery({ from, to, timezone });
-  const byBand   = trpc.spots.byBand.useQuery({ from, to });
-  const byMode   = trpc.spots.byMode.useQuery({ from, to });
-  const byRegion = trpc.spots.byRegion.useQuery({ from, to });
+  function handleBarClick(chartId: ChartId, value: string) {
+    setActiveFilter((prev) =>
+      prev?.chartId === chartId && prev.value === value ? null : { chartId, value }
+    );
+  }
+
+  function filterFor(chartId: ChartId) {
+    if (!activeFilter || activeFilter.chartId === chartId) return undefined;
+    return { dimension: activeFilter.chartId, value: activeFilter.value };
+  }
+
+  const utils     = trpc.useUtils();
+  const stats     = trpc.spots.stats.useQuery();
+  const byHour    = trpc.spots.byHour.useQuery({ from, to, timezone, filter: filterFor("hour") });
+  const byWeekday = trpc.spots.byWeekday.useQuery({ from, to, timezone, filter: filterFor("dow") });
+  const byBand    = trpc.spots.byBand.useQuery({ from, to, timezone, filter: filterFor("band") });
+  const byMode    = trpc.spots.byMode.useQuery({ from, to, timezone, filter: filterFor("mode") });
+  const byRegion  = trpc.spots.byRegion.useQuery({ from, to, timezone, filter: filterFor("region") });
   const mapPoints = trpc.spots.mapPoints.useQuery({ limit: 2000 });
 
-  const hourData = HOUR_LABELS.map((label, i) => ({
-    label,
-    count: byHour.data?.find((r) => r.hour === i)?.count ?? 0,
-  }));
+  const hourData = HOUR_LABELS.map((label, i) => {
+    const row = byHour.data?.find((r) => r.hour === i);
+    return { label, filterValue: String(i), count: row?.count ?? 0, filteredCount: row?.filteredCount ?? 0 };
+  });
 
-  const dowData = DOW_LABELS.map((label, i) => ({
-    label,
-    count: byWeekday.data?.find((r) => r.dow === i)?.count ?? 0,
-  }));
+  const dowData = DOW_LABELS.map((label, i) => {
+    const row = byWeekday.data?.find((r) => r.dow === i);
+    return { label, filterValue: String(i), count: row?.count ?? 0, filteredCount: row?.filteredCount ?? 0 };
+  });
 
-  const bandData = BAND_ORDER.map((label) => ({
-    label,
-    count: byBand.data?.find((r) => r.band === label)?.count ?? 0,
-  })).filter((r) => r.count > 0);
+  const bandData = BAND_ORDER.map((label) => {
+    const row = byBand.data?.find((r) => r.band === label);
+    return { label, count: row?.count ?? 0, filteredCount: row?.filteredCount ?? 0 };
+  }).filter((r) => r.count > 0);
 
-  const modeData = (byMode.data ?? []).map((r) => ({ label: r.mode, count: r.count }));
-  const regionData = (byRegion.data ?? []).map((r) => ({ label: r.region, count: r.count }));
+  const modeData   = (byMode.data ?? []).map((r) => ({ label: r.mode,   count: r.count, filteredCount: r.filteredCount }));
+  const regionData = (byRegion.data ?? []).map((r) => ({ label: r.region, count: r.count, filteredCount: r.filteredCount }));
 
   const lastUpdated = stats.data?.lastInserted
     ? new Intl.DateTimeFormat("en-GB", { dateStyle: "medium", timeStyle: "short" })
@@ -154,12 +167,52 @@ export default function Dashboard() {
 
       {/* Charts grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-        <BarChartCard title="Spots by Hour (local time)" data={hourData}   loading={byHour.isLoading} />
-        <BarChartCard title="Spots by Weekday"           data={dowData}    loading={byWeekday.isLoading} />
-        <BarChartCard title="Spots by Band"              data={bandData}   loading={byBand.isLoading} />
-        <BarChartCard title="Spots by Mode"              data={modeData}   loading={byMode.isLoading} />
+        <BarChartCard
+          title="Spots by Hour (local time)"
+          data={hourData}
+          loading={byHour.isLoading}
+          isOwner={activeFilter?.chartId === "hour"}
+          activeValue={activeFilter?.chartId === "hour" ? activeFilter.value : undefined}
+          filterActive={activeFilter !== null}
+          onBarClick={(val) => handleBarClick("hour", val)}
+        />
+        <BarChartCard
+          title="Spots by Weekday"
+          data={dowData}
+          loading={byWeekday.isLoading}
+          isOwner={activeFilter?.chartId === "dow"}
+          activeValue={activeFilter?.chartId === "dow" ? activeFilter.value : undefined}
+          filterActive={activeFilter !== null}
+          onBarClick={(val) => handleBarClick("dow", val)}
+        />
+        <BarChartCard
+          title="Spots by Band"
+          data={bandData}
+          loading={byBand.isLoading}
+          isOwner={activeFilter?.chartId === "band"}
+          activeValue={activeFilter?.chartId === "band" ? activeFilter.value : undefined}
+          filterActive={activeFilter !== null}
+          onBarClick={(val) => handleBarClick("band", val)}
+        />
+        <BarChartCard
+          title="Spots by Mode"
+          data={modeData}
+          loading={byMode.isLoading}
+          isOwner={activeFilter?.chartId === "mode"}
+          activeValue={activeFilter?.chartId === "mode" ? activeFilter.value : undefined}
+          filterActive={activeFilter !== null}
+          onBarClick={(val) => handleBarClick("mode", val)}
+        />
         <div className="md:col-span-2">
-          <BarChartCard title="Top Regions" data={regionData} loading={byRegion.isLoading} />
+          <BarChartCard
+            title="Top Regions"
+            data={regionData}
+            loading={byRegion.isLoading}
+            isOwner={activeFilter?.chartId === "region"}
+            activeValue={activeFilter?.chartId === "region" ? activeFilter.value : undefined}
+            filterActive={activeFilter !== null}
+            onBarClick={(val) => handleBarClick("region", val)}
+          />
         </div>
       </div>
 

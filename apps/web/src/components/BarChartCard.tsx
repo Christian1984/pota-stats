@@ -4,19 +4,44 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
+  Cell,
   ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
 } from "recharts";
 
-interface Props {
-  title: string;
-  data: { label: string; count: number }[];
-  loading?: boolean;
+interface DataItem {
+  label: string;
+  count: number;
+  filteredCount: number;
+  filterValue?: string;
 }
 
-export function BarChartCard({ title, data, loading }: Props) {
+interface Props {
+  title: string;
+  data: DataItem[];
+  loading?: boolean;
+  isOwner?: boolean;
+  activeValue?: string;
+  filterActive?: boolean;
+  onBarClick?: (value: string) => void;
+}
+
+export function BarChartCard({
+  title,
+  data,
+  loading,
+  isOwner,
+  activeValue,
+  filterActive,
+  onBarClick,
+}: Props) {
+  const showStacked = filterActive && !isOwner;
+  const chartData = showStacked
+    ? data.map((d) => ({ ...d, remainingCount: d.count - d.filteredCount }))
+    : data;
+
   return (
     <div className="rounded-xl bg-slate-800 p-4 flex flex-col gap-3">
       <h2 className="text-sm font-semibold text-slate-300 uppercase tracking-wide">
@@ -35,7 +60,7 @@ export function BarChartCard({ title, data, loading }: Props) {
         </div>
       ) : (
         <ResponsiveContainer width="100%" height={200}>
-          <BarChart data={data} margin={{ top: 4, right: 8, bottom: 0, left: -16 }}>
+          <BarChart data={chartData} margin={{ top: 4, right: 8, bottom: 0, left: -16 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
             <XAxis
               dataKey="label"
@@ -57,8 +82,57 @@ export function BarChartCard({ title, data, loading }: Props) {
                 fontSize: 12,
               }}
               cursor={{ fill: "#1e293b" }}
+              formatter={
+                showStacked
+                  ? (value, name) =>
+                      name === "filteredCount"
+                        ? [value, "Filtered"]
+                        : name === "remainingCount"
+                        ? [value, "Other"]
+                        : [value, "Count"]
+                  : undefined
+              }
             />
-            <Bar dataKey="count" fill="#22d3ee" radius={[3, 3, 0, 0]} />
+            {isOwner ? (
+              <Bar dataKey="count" radius={[3, 3, 0, 0]} isAnimationActive={false}>
+                {data.map((item) => {
+                  const val = item.filterValue ?? item.label;
+                  return (
+                    <Cell
+                      key={item.label}
+                      fill={val === activeValue ? "#22d3ee" : "#475569"}
+                      style={{ cursor: "pointer" }}
+                      onClick={() => onBarClick?.(val)}
+                    />
+                  );
+                })}
+              </Bar>
+            ) : showStacked ? (
+              <>
+                <Bar
+                  dataKey="filteredCount"
+                  stackId="s"
+                  fill="#22d3ee"
+                  radius={[0, 0, 0, 0]}
+                  isAnimationActive={false}
+                  style={{ cursor: "pointer" }}
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  onClick={(d: any) => onBarClick?.(d.filterValue ?? d.label)}
+                />
+                <Bar
+                  dataKey="remainingCount"
+                  stackId="s"
+                  fill="#475569"
+                  radius={[3, 3, 0, 0]}
+                  isAnimationActive={false}
+                  style={{ cursor: "pointer" }}
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  onClick={(d: any) => onBarClick?.(d.filterValue ?? d.label)}
+                />
+              </>
+            ) : (
+              <Bar dataKey="count" fill="#22d3ee" radius={[3, 3, 0, 0]} />
+            )}
           </BarChart>
         </ResponsiveContainer>
       )}
