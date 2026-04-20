@@ -46,6 +46,7 @@ export default function Dashboard() {
     };
   }, [preset, customFrom, customTo]);
 
+  const utils    = trpc.useUtils();
   const stats    = trpc.spots.stats.useQuery();
   const byHour   = trpc.spots.byHour.useQuery({ from, to, timezone });
   const byWeekday = trpc.spots.byWeekday.useQuery({ from, to, timezone });
@@ -85,6 +86,15 @@ export default function Dashboard() {
           <h1 className="text-2xl font-bold tracking-tight">POTA Stats</h1>
           <p className="text-slate-400 text-sm mt-0.5">
             {stats.data?.total?.toLocaleString() ?? "…"} spots · last updated {lastUpdated}
+            <button
+              onClick={() => utils.spots.invalidate()}
+              title="Refresh"
+              className="ml-1.5 inline-flex items-center text-slate-500 hover:text-cyan-400 transition-colors"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
+                <path fillRule="evenodd" d="M13.836 2.477a.75.75 0 0 1 .75.75v3.182a.75.75 0 0 1-.75.75h-3.182a.75.75 0 0 1 0-1.5h1.37l-.84-.841a4.5 4.5 0 0 0-7.08 1.011.75.75 0 0 1-1.31-.73 6 6 0 0 1 9.44-1.347l.842.841V3.227a.75.75 0 0 1 .75-.75Zm-.911 7.5A.75.75 0 0 1 13.199 11a6 6 0 0 1-9.44 1.347l-.842-.841v1.273a.75.75 0 0 1-1.5 0V9.591a.75.75 0 0 1 .75-.75H5.35a.75.75 0 0 1 0 1.5H3.98l.84.841a4.5 4.5 0 0 0 7.08-1.011.75.75 0 0 1 1.025-.273Z" clipRule="evenodd" />
+              </svg>
+            </button>
           </p>
         </div>
 

@@ -36,6 +36,7 @@ async function poll() {
 
     const data = (await res.json()) as ApiSpot[];
 
+    const now = new Date();
     const rows: NewSpot[] = data.map((s) => ({
       spotId: s.spotId,
       activator: s.activator ?? null,
@@ -51,6 +52,7 @@ async function poll() {
       latitude: s.latitude != null ? String(s.latitude) : null,
       longitude: s.longitude != null ? String(s.longitude) : null,
       grid4: s.grid4 ?? null,
+      lastSeenAt: now,
     }));
 
     if (rows.length === 0) {
@@ -61,7 +63,10 @@ async function poll() {
     await db
       .insert(spots)
       .values(rows)
-      .onConflictDoNothing({ target: spots.spotId });
+      .onConflictDoUpdate({
+        target: spots.spotId,
+        set: { lastSeenAt: sql`NOW()` },
+      });
 
     console.log(
       `[${new Date().toISOString()}] Upserted ${rows.length} spots in ${Date.now() - start}ms`
@@ -109,6 +114,18 @@ async function runMigrations() {
     );
     await db.execute(
       sql`CREATE INDEX IF NOT EXISTS idx_spots_frequency ON spots(frequency)`
+    );
+    await db.execute(
+      sql`ALTER TABLE spots ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMPTZ`
+    );
+    await db.execute(
+      sql`ALTER TABLE spots ALTER COLUMN last_seen_at SET DEFAULT NOW()`
+    );
+    await db.execute(
+      sql`UPDATE spots SET last_seen_at = COALESCE(recorded_at, spot_time) WHERE last_seen_at IS NULL`
+    );
+    await db.execute(
+      sql`CREATE INDEX IF NOT EXISTS idx_spots_last_seen_at ON spots(last_seen_at)`
     );
     console.log("Database schema ready");
   } catch (err) {

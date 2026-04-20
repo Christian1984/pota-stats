@@ -25,6 +25,7 @@ export const spots = pgTable(
     longitude: numeric("longitude", { precision: 8, scale: 5 }),
     grid4: text("grid4"),
     recordedAt: timestamp("recorded_at", { withTimezone: true }).defaultNow(),
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).defaultNow(),
   },
   (t) => [
     index("idx_spots_spot_time").on(t.spotTime),

@@ -30,7 +30,7 @@ export const spotsRouter = router({
     const [row] = await getDb()
       .select({
         total: sql<number>`COUNT(*)::int`,
-        lastInserted: sql<Date | null>`MAX(recorded_at)`,
+        lastInserted: sql<Date | null>`MAX(COALESCE(last_seen_at, recorded_at))`,
       })
       .from(spots);
     return row ?? { total: 0, lastInserted: null };
@@ -38,17 +38,18 @@ export const spotsRouter = router({
 
   byHour: publicProcedure.input(localRangeInput).query(async ({ input }) => {
     const result = await getDb().execute(sql`
-      SELECT EXTRACT(HOUR FROM local_time)::int AS hour, COUNT(*)::int AS count
+      SELECT hour, COUNT(*)::int AS count
       FROM (
-        SELECT activator, reference,
-               timezone(${input.timezone}, MIN(spot_time)) AS local_time
+        SELECT DISTINCT
+          activator,
+          reference,
+          EXTRACT(HOUR FROM timezone(${input.timezone}, last_seen_at))::int AS hour
         FROM spots
-        WHERE spot_time >= ${input.from}::timestamptz
-          AND spot_time < ${input.to}::timestamptz
+        WHERE last_seen_at >= ${input.from}::timestamptz
+          AND last_seen_at < ${input.to}::timestamptz
           AND activator IS NOT NULL AND reference IS NOT NULL
-        GROUP BY activator, reference
       ) a
-      GROUP BY EXTRACT(HOUR FROM local_time)
+      GROUP BY hour
       ORDER BY 1
     `);
     return Array.from(result) as { hour: number; count: number }[];
@@ -56,17 +57,18 @@ export const spotsRouter = router({
 
   byWeekday: publicProcedure.input(localRangeInput).query(async ({ input }) => {
     const result = await getDb().execute(sql`
-      SELECT EXTRACT(DOW FROM local_time)::int AS dow, COUNT(*)::int AS count
+      SELECT dow, COUNT(*)::int AS count
       FROM (
-        SELECT activator, reference,
-               timezone(${input.timezone}, MIN(spot_time)) AS local_time
+        SELECT DISTINCT
+          activator,
+          reference,
+          EXTRACT(DOW FROM timezone(${input.timezone}, last_seen_at))::int AS dow
         FROM spots
-        WHERE spot_time >= ${input.from}::timestamptz
-          AND spot_time < ${input.to}::timestamptz
+        WHERE last_seen_at >= ${input.from}::timestamptz
+          AND last_seen_at < ${input.to}::timestamptz
           AND activator IS NOT NULL AND reference IS NOT NULL
-        GROUP BY activator, reference
       ) a
-      GROUP BY EXTRACT(DOW FROM local_time)
+      GROUP BY dow
       ORDER BY 1
     `);
     return Array.from(result) as { dow: number; count: number }[];
@@ -78,8 +80,8 @@ export const spotsRouter = router({
       FROM (
         SELECT DISTINCT activator, reference, ${bandCase} AS band
         FROM spots
-        WHERE spot_time >= ${input.from}::timestamptz
-          AND spot_time < ${input.to}::timestamptz
+        WHERE last_seen_at >= ${input.from}::timestamptz
+          AND last_seen_at < ${input.to}::timestamptz
           AND frequency IS NOT NULL
           AND activator IS NOT NULL AND reference IS NOT NULL
       ) a
@@ -95,8 +97,8 @@ export const spotsRouter = router({
       FROM (
         SELECT DISTINCT activator, reference, mode
         FROM spots
-        WHERE spot_time >= ${input.from}::timestamptz
-          AND spot_time < ${input.to}::timestamptz
+        WHERE last_seen_at >= ${input.from}::timestamptz
+          AND last_seen_at < ${input.to}::timestamptz
           AND mode IS NOT NULL
           AND activator IS NOT NULL AND reference IS NOT NULL
       ) a
@@ -112,8 +114,8 @@ export const spotsRouter = router({
       FROM (
         SELECT DISTINCT activator, reference, SPLIT_PART(location_desc, '-', 1) AS region
         FROM spots
-        WHERE spot_time >= ${input.from}::timestamptz
-          AND spot_time < ${input.to}::timestamptz
+        WHERE last_seen_at >= ${input.from}::timestamptz
+          AND last_seen_at < ${input.to}::timestamptz
           AND location_desc IS NOT NULL
           AND activator IS NOT NULL AND reference IS NOT NULL
       ) a
