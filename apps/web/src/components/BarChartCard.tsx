@@ -38,8 +38,9 @@ export function BarChartCard({
   onBarClick,
 }: Props) {
   const showStacked = filterActive && !isOwner;
+  const chartMode = isOwner ? "owner" : showStacked ? "stacked" : "plain";
   const chartData = showStacked
-    ? data.map((d) => ({ ...d, remainingCount: d.count - d.filteredCount }))
+    ? data.map((d) => ({ ...d, remainingCount: Math.max(0, (d.count ?? 0) - (d.filteredCount ?? 0)) }))
     : data;
 
   return (
@@ -60,7 +61,7 @@ export function BarChartCard({
         </div>
       ) : (
         <ResponsiveContainer width="100%" height={200}>
-          <BarChart data={chartData} margin={{ top: 4, right: 8, bottom: 0, left: -16 }}>
+          <BarChart key={chartMode} data={chartData} margin={{ top: 4, right: 8, bottom: 0, left: -16 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
             <XAxis
               dataKey="label"
@@ -122,7 +123,7 @@ export function BarChartCard({
                 <Bar
                   dataKey="remainingCount"
                   stackId="s"
-                  fill="#475569"
+                  fill="#64748b"
                   radius={[3, 3, 0, 0]}
                   isAnimationActive={false}
                   style={{ cursor: "pointer" }}
