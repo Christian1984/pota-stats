@@ -1,0 +1,23 @@
+{
+  "name": "@pota-stats/poller",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts",
+    "build": "echo 'no build step for poller'"
+  },
+  "dependencies": {
+    "@pota-stats/db": "workspace:*",
+    "drizzle-orm": "^0.38.3",
+    "node-cron": "^3.0.3",
+    "postgres": "^3.4.5",
+    "tsx": "^4.19.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.6",
+    "@types/node-cron": "^3.0.11",
+    "typescript": "^5.7.3"
+  }
+}

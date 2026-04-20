@@ -1,0 +1,47 @@
+# Production environment — copy to your server and fill in the .env values.
+# Deploy: docker compose -f docker-compose.prod.yml pull && docker compose -f docker-compose.prod.yml up -d
+services:
+  web:
+    image: ghcr.io/${GITHUB_REPOSITORY_OWNER}/pota-stats-web:latest
+    environment:
+      DATABASE_URL: postgresql://pota:${POSTGRES_PASSWORD}@db:5432/pota_stats
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  poller:
+    image: ghcr.io/${GITHUB_REPOSITORY_OWNER}/pota-stats-poller:latest
+    environment:
+      DATABASE_URL: postgresql://pota:${POSTGRES_PASSWORD}@db:5432/pota_stats
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  db:
+    image: postgres:16-alpine
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_DB: pota_stats
+      POSTGRES_USER: pota
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pota -d pota_stats"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN}
+    depends_on:
+      - web
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
