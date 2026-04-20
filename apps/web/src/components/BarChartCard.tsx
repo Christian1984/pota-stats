@@ -131,7 +131,14 @@ export function BarChartCard({
                 />
               </>
             ) : (
-              <Bar dataKey="count" fill="#22d3ee" radius={[3, 3, 0, 0]} />
+              <Bar
+                dataKey="count"
+                fill="#22d3ee"
+                radius={[3, 3, 0, 0]}
+                style={{ cursor: onBarClick ? "pointer" : undefined }}
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                onClick={(d: any) => onBarClick?.(d.filterValue ?? d.label)}
+              />
             )}
           </BarChart>
         </ResponsiveContainer>
