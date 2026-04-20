@@ -1,9 +1,13 @@
 import { createDb, spots, type NewSpot } from "@pota-stats/db";
 import { sql } from "drizzle-orm";
-import cron from "node-cron";
 
 const DATABASE_URL = process.env.DATABASE_URL;
 if (!DATABASE_URL) throw new Error("DATABASE_URL is required");
+
+const POLL_INTERVAL_MINUTES = Math.max(
+  1,
+  parseInt(process.env.POLL_INTERVAL_MINUTES ?? "10", 10)
+);
 
 const db = createDb(DATABASE_URL);
 
@@ -70,8 +74,8 @@ async function poll() {
 await runMigrations();
 await poll();
 
-cron.schedule("*/5 * * * *", poll);
-console.log("Poller running — fetching every 5 minutes");
+setInterval(poll, POLL_INTERVAL_MINUTES * 60 * 1000);
+console.log(`Poller running — fetching every ${POLL_INTERVAL_MINUTES} minutes`);
 
 async function runMigrations() {
   try {
