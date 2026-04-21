@@ -45,11 +45,12 @@ export default function Dashboard() {
   const [customTo, setCustomTo] = useState(() => toISODate(new Date()));
   const [activeFilter, setActiveFilter] = useState<{ chartId: ChartId; value: string } | null>(null);
   const [selectedPark, setSelectedPark] = useState<{ references: string[]; label: string } | null>(null);
+  const [refreshedAt, setRefreshedAt] = useState(() => Date.now());
 
   const { from, to } = useMemo(() => {
     const fallback = () => ({
-      from: new Date(Date.now() - 30 * 86_400_000).toISOString(),
-      to: new Date().toISOString(),
+      from: new Date(refreshedAt - 30 * 86_400_000).toISOString(),
+      to: new Date(refreshedAt).toISOString(),
     });
     if (preset === "custom") {
       const f = parseDate(customFrom);
@@ -59,10 +60,10 @@ export default function Dashboard() {
     }
     const days = PRESETS.find((p) => p.label === preset)?.days ?? 30;
     return {
-      from: new Date(Date.now() - days * 86_400_000).toISOString(),
-      to: new Date().toISOString(),
+      from: new Date(refreshedAt - days * 86_400_000).toISOString(),
+      to: new Date(refreshedAt).toISOString(),
     };
-  }, [preset, customFrom, customTo]);
+  }, [preset, customFrom, customTo, refreshedAt]);
 
   function handleBarClick(chartId: ChartId, value: string) {
     setActiveFilter((prev) =>
@@ -77,7 +78,10 @@ export default function Dashboard() {
 
   const utils = trpc.useUtils();
 
-  const refresh = useCallback(() => { utils.spots.invalidate(); }, [utils]);
+  const refresh = useCallback(() => {
+    setRefreshedAt(Date.now());
+    utils.spots.stats.invalidate();
+  }, [utils]);
 
   useEffect(() => {
     const id = setInterval(refresh, 5 * 60 * 1000);
