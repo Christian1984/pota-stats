@@ -54,7 +54,7 @@ export function SpotMap({ points, onSelect }: Props) {
     if (!map || points.length === 0) return;
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const clusterGroup = (L as any).markerClusterGroup({ zoomToBoundsOnClick: !onSelect });
+    const clusterGroup = (L as any).markerClusterGroup({ zoomToBoundsOnClick: true });
     const markerMeta = new Map<L.Marker, { reference: string; label: string }>();
 
     for (const p of points) {

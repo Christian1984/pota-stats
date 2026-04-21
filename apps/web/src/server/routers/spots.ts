@@ -19,6 +19,8 @@ const bandCase = sql.raw(`CASE
   ELSE 'UHF+'
 END`);
 
+const noQrt = sql.raw(`(mode IS NULL OR UPPER(mode) != 'QRT')`);
+
 const dimensionEnum = z.enum(["hour", "dow", "band", "mode", "region"]);
 type Dimension = z.infer<typeof dimensionEnum>;
 
@@ -70,6 +72,7 @@ export const spotsRouter = router({
             WHERE last_seen_at >= ${from}::timestamptz
               AND last_seen_at < ${to}::timestamptz
               AND activator IS NOT NULL AND reference IS NOT NULL
+              AND ${noQrt}
           ) s
           GROUP BY activator, reference, hour
         ) a
@@ -86,6 +89,7 @@ export const spotsRouter = router({
         WHERE last_seen_at >= ${from}::timestamptz
           AND last_seen_at < ${to}::timestamptz
           AND activator IS NOT NULL AND reference IS NOT NULL
+          AND ${noQrt}
       ) a
       GROUP BY hour ORDER BY 1
     `);
@@ -110,6 +114,7 @@ export const spotsRouter = router({
             WHERE last_seen_at >= ${from}::timestamptz
               AND last_seen_at < ${to}::timestamptz
               AND activator IS NOT NULL AND reference IS NOT NULL
+              AND ${noQrt}
           ) s
           GROUP BY activator, reference, dow
         ) a
@@ -126,6 +131,7 @@ export const spotsRouter = router({
         WHERE last_seen_at >= ${from}::timestamptz
           AND last_seen_at < ${to}::timestamptz
           AND activator IS NOT NULL AND reference IS NOT NULL
+          AND ${noQrt}
       ) a
       GROUP BY dow ORDER BY 1
     `);
@@ -151,6 +157,7 @@ export const spotsRouter = router({
               AND last_seen_at < ${to}::timestamptz
               AND frequency IS NOT NULL
               AND activator IS NOT NULL AND reference IS NOT NULL
+              AND ${noQrt}
           ) s
           GROUP BY activator, reference, band
         ) a
@@ -167,6 +174,7 @@ export const spotsRouter = router({
           AND last_seen_at < ${to}::timestamptz
           AND frequency IS NOT NULL
           AND activator IS NOT NULL AND reference IS NOT NULL
+          AND ${noQrt}
       ) a
       GROUP BY band ORDER BY count DESC
     `);
@@ -190,8 +198,8 @@ export const spotsRouter = router({
             FROM spots
             WHERE last_seen_at >= ${from}::timestamptz
               AND last_seen_at < ${to}::timestamptz
-              AND mode IS NOT NULL
               AND activator IS NOT NULL AND reference IS NOT NULL
+              AND ${noQrt}
           ) s
           GROUP BY activator, reference, mode
         ) a
@@ -206,8 +214,8 @@ export const spotsRouter = router({
         FROM spots
         WHERE last_seen_at >= ${from}::timestamptz
           AND last_seen_at < ${to}::timestamptz
-          AND mode IS NOT NULL
           AND activator IS NOT NULL AND reference IS NOT NULL
+          AND ${noQrt}
       ) a
       GROUP BY mode ORDER BY count DESC
     `);
@@ -233,6 +241,7 @@ export const spotsRouter = router({
               AND last_seen_at < ${to}::timestamptz
               AND location_desc IS NOT NULL
               AND activator IS NOT NULL AND reference IS NOT NULL
+              AND ${noQrt}
           ) s
           GROUP BY activator, reference, region
         ) a
@@ -249,6 +258,7 @@ export const spotsRouter = router({
           AND last_seen_at < ${to}::timestamptz
           AND location_desc IS NOT NULL
           AND activator IS NOT NULL AND reference IS NOT NULL
+          AND ${noQrt}
       ) a
       GROUP BY region ORDER BY count DESC LIMIT 20
     `);
@@ -278,6 +288,7 @@ export const spotsRouter = router({
           WHERE latitude IS NOT NULL AND longitude IS NOT NULL
             AND last_seen_at >= ${from}::timestamptz
             AND last_seen_at < ${to}::timestamptz
+            AND ${noQrt}
             AND ${m}
           GROUP BY reference, park_name, latitude, longitude
           LIMIT ${limit}
@@ -295,6 +306,7 @@ export const spotsRouter = router({
         WHERE latitude IS NOT NULL AND longitude IS NOT NULL
           AND last_seen_at >= ${from}::timestamptz
           AND last_seen_at < ${to}::timestamptz
+          AND ${noQrt}
         GROUP BY reference, park_name, latitude, longitude
         LIMIT ${limit}
       `);
@@ -332,6 +344,7 @@ export const spotsRouter = router({
             WHERE reference IN (${refIn})
               AND last_seen_at >= ${from}::timestamptz
               AND last_seen_at < ${to}::timestamptz
+              AND ${noQrt}
               AND ${m}
           ) s
           GROUP BY activator, reference, park_name, mode, band,
@@ -350,6 +363,7 @@ export const spotsRouter = router({
           WHERE reference IN (${refIn})
             AND last_seen_at >= ${from}::timestamptz
             AND last_seen_at < ${to}::timestamptz
+            AND ${noQrt}
         ) s
         GROUP BY activator, reference, park_name, mode, band,
           DATE(timezone(${timezone}, spot_time))
