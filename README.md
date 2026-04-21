@@ -4,12 +4,12 @@ Self-hosted dashboard for [Parks on the Air](https://parksontheair.com/) spot an
 
 ## Stack
 
-| Layer | Tech |
-|---|---|
+| Layer    | Tech                                                |
+| -------- | --------------------------------------------------- |
 | Frontend | Next.js 15, tRPC, Recharts, react-leaflet, Tailwind |
-| Backend | Next.js API routes (tRPC), Node.js poller |
-| Database | PostgreSQL 16 |
-| Monorepo | pnpm workspaces |
+| Backend  | Next.js API routes (tRPC), Node.js poller           |
+| Database | PostgreSQL 16                                       |
+| Monorepo | pnpm workspaces                                     |
 
 ## Project structure
 
@@ -56,15 +56,19 @@ GitHub Actions builds both Docker images on every push to `main` and pushes them
    **GitHub repo → Settings → Actions → General → Workflow permissions → Read and write**
 
 2. Log in to ghcr.io on the server:
+
    ```bash
    echo <your-github-pat> | docker login ghcr.io -u <your-github-username> --password-stdin
    ```
 
 3. Copy the prod compose file to the server and create a `.env`:
+
    ```bash
    scp docker-compose.prod.yml user@homeserver:~/pota-stats/docker-compose.prod.yml
    ```
+
    Then on the server, create `~/pota-stats/.env`:
+
    ```env
    POSTGRES_PASSWORD=a_strong_password
    GITHUB_REPOSITORY_OWNER=your-github-username
@@ -85,9 +89,9 @@ docker compose -f docker-compose.prod.yml up -d
 
 ## Environment variables
 
-| Variable | Where | Description |
-|---|---|---|
-| `DATABASE_URL` | local `.env` | Connection string for local dev |
-| `POSTGRES_PASSWORD` | prod `.env` | DB password (prod only) |
-| `GITHUB_REPOSITORY_OWNER` | prod `.env` | Your GitHub username, for image names |
-| `CLOUDFLARE_TUNNEL_TOKEN` | prod `.env` | Token from Cloudflare Zero Trust dashboard |
+| Variable                  | Where        | Description                                |
+| ------------------------- | ------------ | ------------------------------------------ |
+| `DATABASE_URL`            | local `.env` | Connection string for local dev            |
+| `POSTGRES_PASSWORD`       | prod `.env`  | DB password (prod only)                    |
+| `GITHUB_REPOSITORY_OWNER` | prod `.env`  | Your GitHub username, for image names      |
+| `CLOUDFLARE_TUNNEL_TOKEN` | prod `.env`  | Token from Cloudflare Zero Trust dashboard |

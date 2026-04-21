@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "node --env-file=../../.env --import tsx/esm --watch src/index.ts",
     "start": "tsx src/index.ts",
-    "build": "echo 'no build step for poller'"
+    "build": "echo 'no build step for poller'",
+    "lint": "eslint src"
   },
   "dependencies": {
     "@pota-stats/db": "workspace:*",
@@ -16,6 +17,9 @@
   },
   "devDependencies": {
     "@types/node": "^22.10.6",
+    "@typescript-eslint/eslint-plugin": "^8.59.0",
+    "@typescript-eslint/parser": "^8.59.0",
+    "eslint": "^10.2.1",
     "typescript": "^5.7.3"
   }
 }

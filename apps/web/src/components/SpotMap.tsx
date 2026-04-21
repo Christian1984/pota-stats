@@ -52,7 +52,9 @@ export function SpotMap({ points }: Props) {
     const map = mapRef.current;
     if (!map || points.length === 0) return;
 
-    const cluster = (L as unknown as { markerClusterGroup: () => L.LayerGroup }).markerClusterGroup();
+    const cluster = (
+      L as unknown as { markerClusterGroup: () => L.LayerGroup }
+    ).markerClusterGroup();
 
     for (const p of points) {
       if (p.lat == null || p.lon == null) continue;
@@ -61,9 +63,7 @@ export function SpotMap({ points }: Props) {
       if (isNaN(lat) || isNaN(lon)) continue;
       const marker = L.marker([lat, lon]);
       if (p.reference || p.parkName) {
-        marker.bindPopup(
-          `<strong>${p.reference ?? ""}</strong><br/>${p.parkName ?? ""}`
-        );
+        marker.bindPopup(`<strong>${p.reference ?? ""}</strong><br/>${p.parkName ?? ""}`);
       }
       cluster.addLayer(marker);
     }
@@ -75,10 +75,6 @@ export function SpotMap({ points }: Props) {
   }, [points]);
 
   return (
-    <div
-      ref={containerRef}
-      className="w-full rounded-xl overflow-hidden"
-      style={{ height: 400 }}
-    />
+    <div ref={containerRef} className="w-full rounded-xl overflow-hidden" style={{ height: 400 }} />
   );
 }

@@ -4,10 +4,7 @@ import { sql } from "drizzle-orm";
 const DATABASE_URL = process.env.DATABASE_URL;
 if (!DATABASE_URL) throw new Error("DATABASE_URL is required");
 
-const POLL_INTERVAL_MINUTES = Math.max(
-  1,
-  parseInt(process.env.POLL_INTERVAL_MINUTES ?? "10", 10)
-);
+const POLL_INTERVAL_MINUTES = Math.max(1, parseInt(process.env.POLL_INTERVAL_MINUTES ?? "10", 10));
 
 const db = createDb(DATABASE_URL);
 
@@ -77,10 +74,22 @@ async function poll() {
 }
 
 await runMigrations();
-await poll();
 
-setInterval(poll, POLL_INTERVAL_MINUTES * 60 * 1000);
-console.log(`Poller running — fetching every ${POLL_INTERVAL_MINUTES} minutes`);
+function scheduleNext() {
+  const now = new Date();
+  const ms = POLL_INTERVAL_MINUTES * 60 * 1000;
+  const msIntoHour = (now.getMinutes() * 60 + now.getSeconds()) * 1000 + now.getMilliseconds();
+  const delay = ms - (msIntoHour % ms);
+  const nextTick = new Date(now.getTime() + delay);
+  console.log(`Next poll at ${nextTick.toISOString()}`);
+  setTimeout(async () => {
+    await poll();
+    scheduleNext();
+  }, delay);
+}
+
+scheduleNext();
+console.log(`Poller running — fetching at every ${POLL_INTERVAL_MINUTES}-minute mark of the hour`);
 
 async function runMigrations() {
   try {
@@ -103,30 +112,18 @@ async function runMigrations() {
         recorded_at TIMESTAMPTZ DEFAULT NOW()
       )
     `);
-    await db.execute(
-      sql`CREATE INDEX IF NOT EXISTS idx_spots_spot_time ON spots(spot_time)`
-    );
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_spots_spot_time ON spots(spot_time)`);
     await db.execute(
       sql`CREATE INDEX IF NOT EXISTS idx_spots_location_desc ON spots(location_desc)`
     );
-    await db.execute(
-      sql`CREATE INDEX IF NOT EXISTS idx_spots_mode ON spots(mode)`
-    );
-    await db.execute(
-      sql`CREATE INDEX IF NOT EXISTS idx_spots_frequency ON spots(frequency)`
-    );
-    await db.execute(
-      sql`ALTER TABLE spots ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMPTZ`
-    );
-    await db.execute(
-      sql`ALTER TABLE spots ALTER COLUMN last_seen_at SET DEFAULT NOW()`
-    );
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_spots_mode ON spots(mode)`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_spots_frequency ON spots(frequency)`);
+    await db.execute(sql`ALTER TABLE spots ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMPTZ`);
+    await db.execute(sql`ALTER TABLE spots ALTER COLUMN last_seen_at SET DEFAULT NOW()`);
     await db.execute(
       sql`UPDATE spots SET last_seen_at = COALESCE(recorded_at, spot_time) WHERE last_seen_at IS NULL`
     );
-    await db.execute(
-      sql`CREATE INDEX IF NOT EXISTS idx_spots_last_seen_at ON spots(last_seen_at)`
-    );
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_spots_last_seen_at ON spots(last_seen_at)`);
     console.log("Database schema ready");
   } catch (err) {
     console.error("Migration failed:", err);

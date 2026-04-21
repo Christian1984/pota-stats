@@ -6,17 +6,19 @@ import { BarChartCard } from "@/components/BarChartCard";
 import { trpc } from "@/lib/trpc";
 import { BAND_ORDER, DOW_LABELS, HOUR_LABELS } from "@/lib/labels";
 
-const SpotMap = dynamic(
-  () => import("@/components/SpotMap").then((m) => m.SpotMap),
-  { ssr: false, loading: () => <div className="h-96 flex items-center justify-center text-slate-500">Loading map…</div> }
-);
+const SpotMap = dynamic(() => import("@/components/SpotMap").then((m) => m.SpotMap), {
+  ssr: false,
+  loading: () => (
+    <div className="h-96 flex items-center justify-center text-slate-500">Loading map…</div>
+  ),
+});
 
 const PRESETS = [
-  { label: "1d",  days: 1 },
-  { label: "7d",  days: 7 },
+  { label: "1d", days: 1 },
+  { label: "7d", days: 7 },
   { label: "30d", days: 30 },
   { label: "90d", days: 90 },
-  { label: "1y",  days: 365 },
+  { label: "1y", days: 365 },
 ] as const;
 
 type PresetLabel = (typeof PRESETS)[number]["label"] | "custom";
@@ -26,25 +28,38 @@ function toISODate(d: Date) {
   return d.toISOString().slice(0, 10);
 }
 
+function parseDate(s: string, endOfDay = false): Date | null {
+  const d = new Date(endOfDay ? s + "T23:59:59" : s);
+  return isNaN(d.getTime()) ? null : d;
+}
+
 export default function Dashboard() {
   const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
   const [preset, setPreset] = useState<PresetLabel>("30d");
-  const [customFrom, setCustomFrom] = useState(() => toISODate(new Date(Date.now() - 30 * 86_400_000)));
+  const [customFrom, setCustomFrom] = useState(() =>
+    toISODate(new Date(Date.now() - 30 * 86_400_000))
+  );
   const [customTo, setCustomTo] = useState(() => toISODate(new Date()));
-  const [activeFilter, setActiveFilter] = useState<{ chartId: ChartId; value: string } | null>(null);
+  const [activeFilter, setActiveFilter] = useState<{ chartId: ChartId; value: string } | null>(
+    null
+  );
 
   const { from, to } = useMemo(() => {
+    const fallback = () => ({
+      from: new Date(Date.now() - 30 * 86_400_000).toISOString(),
+      to: new Date().toISOString(),
+    });
     if (preset === "custom") {
-      return {
-        from: new Date(customFrom).toISOString(),
-        to:   new Date(customTo + "T23:59:59").toISOString(),
-      };
+      const f = parseDate(customFrom);
+      const t = parseDate(customTo, true);
+      if (!f || !t) return fallback();
+      return { from: f.toISOString(), to: t.toISOString() };
     }
     const days = PRESETS.find((p) => p.label === preset)?.days ?? 30;
     return {
       from: new Date(Date.now() - days * 86_400_000).toISOString(),
-      to:   new Date().toISOString(),
+      to: new Date().toISOString(),
     };
   }, [preset, customFrom, customTo]);
 
@@ -59,23 +74,46 @@ export default function Dashboard() {
     return { dimension: activeFilter.chartId, value: activeFilter.value };
   }
 
-  const utils     = trpc.useUtils();
-  const stats     = trpc.spots.stats.useQuery();
-  const byHour    = trpc.spots.byHour.useQuery({ from, to, timezone, filter: filterFor("hour") });
+  const utils = trpc.useUtils();
+  const stats = trpc.spots.stats.useQuery();
+  const byHour = trpc.spots.byHour.useQuery({ from, to, timezone, filter: filterFor("hour") });
   const byWeekday = trpc.spots.byWeekday.useQuery({ from, to, timezone, filter: filterFor("dow") });
-  const byBand    = trpc.spots.byBand.useQuery({ from, to, timezone, filter: filterFor("band") });
-  const byMode    = trpc.spots.byMode.useQuery({ from, to, timezone, filter: filterFor("mode") });
-  const byRegion  = trpc.spots.byRegion.useQuery({ from, to, timezone, filter: filterFor("region") });
-  const mapPoints = trpc.spots.mapPoints.useQuery({ limit: 2000 });
+  const byBand = trpc.spots.byBand.useQuery({ from, to, timezone, filter: filterFor("band") });
+  const byMode = trpc.spots.byMode.useQuery({ from, to, timezone, filter: filterFor("mode") });
+  const byRegion = trpc.spots.byRegion.useQuery({
+    from,
+    to,
+    timezone,
+    filter: filterFor("region"),
+  });
+  const mapPoints = trpc.spots.mapPoints.useQuery({
+    from,
+    to,
+    timezone,
+    filter: activeFilter
+      ? { dimension: activeFilter.chartId, value: activeFilter.value }
+      : undefined,
+    limit: 2000,
+  });
 
   const hourData = HOUR_LABELS.map((label, i) => {
     const row = byHour.data?.find((r) => r.hour === i);
-    return { label, filterValue: String(i), count: row?.count ?? 0, filteredCount: row?.filteredCount ?? 0 };
+    return {
+      label,
+      filterValue: String(i),
+      count: row?.count ?? 0,
+      filteredCount: row?.filteredCount ?? 0,
+    };
   });
 
   const dowData = DOW_LABELS.map((label, i) => {
     const row = byWeekday.data?.find((r) => r.dow === i);
-    return { label, filterValue: String(i), count: row?.count ?? 0, filteredCount: row?.filteredCount ?? 0 };
+    return {
+      label,
+      filterValue: String(i),
+      count: row?.count ?? 0,
+      filteredCount: row?.filteredCount ?? 0,
+    };
   });
 
   const bandData = BAND_ORDER.map((label) => {
@@ -83,12 +121,21 @@ export default function Dashboard() {
     return { label, count: row?.count ?? 0, filteredCount: row?.filteredCount ?? 0 };
   }).filter((r) => r.count > 0);
 
-  const modeData   = (byMode.data ?? []).map((r) => ({ label: r.mode,   count: r.count, filteredCount: r.filteredCount }));
-  const regionData = (byRegion.data ?? []).map((r) => ({ label: r.region, count: r.count, filteredCount: r.filteredCount }));
+  const modeData = (byMode.data ?? []).map((r) => ({
+    label: r.mode,
+    count: r.count,
+    filteredCount: r.filteredCount,
+  }));
+  const regionData = (byRegion.data ?? []).map((r) => ({
+    label: r.region,
+    count: r.count,
+    filteredCount: r.filteredCount,
+  }));
 
   const lastUpdated = stats.data?.lastInserted
-    ? new Intl.DateTimeFormat("en-GB", { dateStyle: "medium", timeStyle: "short" })
-        .format(new Date(stats.data.lastInserted))
+    ? new Intl.DateTimeFormat("en-GB", { dateStyle: "medium", timeStyle: "short" }).format(
+        new Date(stats.data.lastInserted)
+      )
     : "—";
 
   return (
@@ -104,8 +151,17 @@ export default function Dashboard() {
               title="Refresh"
               className="ml-1.5 inline-flex items-center text-slate-500 hover:text-cyan-400 transition-colors"
             >
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
-                <path fillRule="evenodd" d="M13.836 2.477a.75.75 0 0 1 .75.75v3.182a.75.75 0 0 1-.75.75h-3.182a.75.75 0 0 1 0-1.5h1.37l-.84-.841a4.5 4.5 0 0 0-7.08 1.011.75.75 0 0 1-1.31-.73 6 6 0 0 1 9.44-1.347l.842.841V3.227a.75.75 0 0 1 .75-.75Zm-.911 7.5A.75.75 0 0 1 13.199 11a6 6 0 0 1-9.44 1.347l-.842-.841v1.273a.75.75 0 0 1-1.5 0V9.591a.75.75 0 0 1 .75-.75H5.35a.75.75 0 0 1 0 1.5H3.98l.84.841a4.5 4.5 0 0 0 7.08-1.011.75.75 0 0 1 1.025-.273Z" clipRule="evenodd" />
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 16 16"
+                fill="currentColor"
+                className="w-3.5 h-3.5"
+              >
+                <path
+                  fillRule="evenodd"
+                  d="M13.836 2.477a.75.75 0 0 1 .75.75v3.182a.75.75 0 0 1-.75.75h-3.182a.75.75 0 0 1 0-1.5h1.37l-.84-.841a4.5 4.5 0 0 0-7.08 1.011.75.75 0 0 1-1.31-.73 6 6 0 0 1 9.44-1.347l.842.841V3.227a.75.75 0 0 1 .75-.75Zm-.911 7.5A.75.75 0 0 1 13.199 11a6 6 0 0 1-9.44 1.347l-.842-.841v1.273a.75.75 0 0 1-1.5 0V9.591a.75.75 0 0 1 .75-.75H5.35a.75.75 0 0 1 0 1.5H3.98l.84.841a4.5 4.5 0 0 0 7.08-1.011.75.75 0 0 1 1.025-.273Z"
+                  clipRule="evenodd"
+                />
               </svg>
             </button>
           </p>

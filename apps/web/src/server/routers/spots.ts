@@ -31,11 +31,16 @@ const chartInput = z.object({
 
 function filterMatchExpr(dim: Dimension, value: string, timezone: string) {
   switch (dim) {
-    case "mode":   return sql`mode = ${value}`;
-    case "band":   return sql`(${bandCase}) = ${value}`;
-    case "region": return sql`SPLIT_PART(location_desc, '-', 1) = ${value}`;
-    case "hour":   return sql`EXTRACT(HOUR FROM timezone(${timezone}, last_seen_at))::int = ${parseInt(value, 10)}`;
-    case "dow":    return sql`EXTRACT(DOW FROM timezone(${timezone}, last_seen_at))::int = ${parseInt(value, 10)}`;
+    case "mode":
+      return sql`mode = ${value}`;
+    case "band":
+      return sql`(${bandCase}) = ${value}`;
+    case "region":
+      return sql`SPLIT_PART(location_desc, '-', 1) = ${value}`;
+    case "hour":
+      return sql`EXTRACT(HOUR FROM timezone(${timezone}, last_seen_at))::int = ${parseInt(value, 10)}`;
+    case "dow":
+      return sql`EXTRACT(DOW FROM timezone(${timezone}, last_seen_at))::int = ${parseInt(value, 10)}`;
   }
 }
 
@@ -84,8 +89,10 @@ export const spotsRouter = router({
       ) a
       GROUP BY hour ORDER BY 1
     `);
-    return (Array.from(result) as { hour: number; count: number }[])
-      .map((r) => ({ ...r, filteredCount: r.count }));
+    return (Array.from(result) as { hour: number; count: number }[]).map((r) => ({
+      ...r,
+      filteredCount: r.count,
+    }));
   }),
 
   byWeekday: publicProcedure.input(chartInput).query(async ({ input }) => {
@@ -122,8 +129,10 @@ export const spotsRouter = router({
       ) a
       GROUP BY dow ORDER BY 1
     `);
-    return (Array.from(result) as { dow: number; count: number }[])
-      .map((r) => ({ ...r, filteredCount: r.count }));
+    return (Array.from(result) as { dow: number; count: number }[]).map((r) => ({
+      ...r,
+      filteredCount: r.count,
+    }));
   }),
 
   byBand: publicProcedure.input(chartInput).query(async ({ input }) => {
@@ -161,8 +170,10 @@ export const spotsRouter = router({
       ) a
       GROUP BY band ORDER BY count DESC
     `);
-    return (Array.from(result) as { band: string; count: number }[])
-      .map((r) => ({ ...r, filteredCount: r.count }));
+    return (Array.from(result) as { band: string; count: number }[]).map((r) => ({
+      ...r,
+      filteredCount: r.count,
+    }));
   }),
 
   byMode: publicProcedure.input(chartInput).query(async ({ input }) => {
@@ -200,8 +211,10 @@ export const spotsRouter = router({
       ) a
       GROUP BY mode ORDER BY count DESC
     `);
-    return (Array.from(result) as { mode: string; count: number }[])
-      .map((r) => ({ ...r, filteredCount: r.count }));
+    return (Array.from(result) as { mode: string; count: number }[]).map((r) => ({
+      ...r,
+      filteredCount: r.count,
+    }));
   }),
 
   byRegion: publicProcedure.input(chartInput).query(async ({ input }) => {
@@ -239,23 +252,57 @@ export const spotsRouter = router({
       ) a
       GROUP BY region ORDER BY count DESC LIMIT 20
     `);
-    return (Array.from(result) as { region: string; count: number }[])
-      .map((r) => ({ ...r, filteredCount: r.count }));
+    return (Array.from(result) as { region: string; count: number }[]).map((r) => ({
+      ...r,
+      filteredCount: r.count,
+    }));
   }),
 
   mapPoints: publicProcedure
-    .input(z.object({ limit: z.number().int().min(1).max(5000).default(2000) }))
+    .input(
+      z.object({
+        from: z.string(),
+        to: z.string(),
+        timezone: z.string().default("UTC"),
+        filter: z.object({ dimension: dimensionEnum, value: z.string() }).optional(),
+        limit: z.number().int().min(1).max(5000).default(2000),
+      })
+    )
     .query(async ({ input }) => {
-      return getDb()
-        .select({
-          reference: spots.reference,
-          parkName: spots.parkName,
-          lat: spots.latitude,
-          lon: spots.longitude,
-        })
-        .from(spots)
-        .where(sql`latitude IS NOT NULL AND longitude IS NOT NULL`)
-        .groupBy(spots.reference, spots.parkName, spots.latitude, spots.longitude)
-        .limit(input.limit);
+      const { from, to, timezone, filter, limit } = input;
+      if (filter) {
+        const m = filterMatchExpr(filter.dimension, filter.value, timezone);
+        const result = await getDb().execute(sql`
+          SELECT reference, park_name AS "parkName", latitude AS lat, longitude AS lon
+          FROM spots
+          WHERE latitude IS NOT NULL AND longitude IS NOT NULL
+            AND last_seen_at >= ${from}::timestamptz
+            AND last_seen_at < ${to}::timestamptz
+            AND ${m}
+          GROUP BY reference, park_name, latitude, longitude
+          LIMIT ${limit}
+        `);
+        return Array.from(result) as {
+          reference: string;
+          parkName: string;
+          lat: string;
+          lon: string;
+        }[];
+      }
+      const result = await getDb().execute(sql`
+        SELECT reference, park_name AS "parkName", latitude AS lat, longitude AS lon
+        FROM spots
+        WHERE latitude IS NOT NULL AND longitude IS NOT NULL
+          AND last_seen_at >= ${from}::timestamptz
+          AND last_seen_at < ${to}::timestamptz
+        GROUP BY reference, park_name, latitude, longitude
+        LIMIT ${limit}
+      `);
+      return Array.from(result) as {
+        reference: string;
+        parkName: string;
+        lat: string;
+        lon: string;
+      }[];
     }),
 });

@@ -1,11 +1,4 @@
-import {
-  bigint,
-  index,
-  numeric,
-  pgTable,
-  text,
-  timestamp,
-} from "drizzle-orm/pg-core";
+import { bigint, index, numeric, pgTable, text, timestamp } from "drizzle-orm/pg-core";
 
 export const spots = pgTable(
   "spots",
