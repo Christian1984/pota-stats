@@ -22,7 +22,7 @@ services:
   db:
     image: postgres:16-alpine
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - ./postgres_data:/var/lib/postgresql/data
     environment:
       POSTGRES_DB: pota_stats
       POSTGRES_USER: pota
@@ -42,6 +42,3 @@ services:
     depends_on:
       - web
     restart: unless-stopped
-
-volumes:
-  postgres_data:

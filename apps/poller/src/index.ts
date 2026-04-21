@@ -25,10 +25,14 @@ interface ApiSpot {
   grid4: string | null;
 }
 
+const USER_AGENT = process.env.USER_AGENT ?? "node";
+
 async function poll() {
   const start = Date.now();
   try {
-    const res = await fetch("https://api.pota.app/v1/spots");
+    const res = await fetch("https://api.pota.app/v1/spots", {
+      headers: { "User-Agent": USER_AGENT },
+    });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
     const data = (await res.json()) as ApiSpot[];
@@ -79,7 +83,8 @@ function scheduleNext() {
   const now = new Date();
   const ms = POLL_INTERVAL_MINUTES * 60 * 1000;
   const msIntoHour = (now.getMinutes() * 60 + now.getSeconds()) * 1000 + now.getMilliseconds();
-  const delay = ms - (msIntoHour % ms);
+  const jitter = (5 + Math.random() * 10) * 1000;
+  const delay = ms - (msIntoHour % ms) + jitter;
   const nextTick = new Date(now.getTime() + delay);
   console.log(`Next poll at ${nextTick.toISOString()}`);
   setTimeout(async () => {
