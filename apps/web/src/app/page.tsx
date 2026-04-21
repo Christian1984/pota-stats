@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ActivationPanel } from "@/components/ActivationPanel";
 import { BarChartCard } from "@/components/BarChartCard";
 import { RefreshButton } from "@/components/RefreshButton";
@@ -77,13 +77,12 @@ export default function Dashboard() {
 
   const utils = trpc.useUtils();
 
-  function refresh() { utils.spots.invalidate(); }
+  const refresh = useCallback(() => { utils.spots.invalidate(); }, [utils]);
 
   useEffect(() => {
     const id = setInterval(refresh, 5 * 60 * 1000);
     return () => clearInterval(id);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [refresh]);
 
   const stats = trpc.spots.stats.useQuery();
   const byHour = trpc.spots.byHour.useQuery({ from, to, timezone, filter: filterFor("hour") });

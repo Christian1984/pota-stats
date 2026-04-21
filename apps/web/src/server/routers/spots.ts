@@ -329,10 +329,7 @@ export const spotsRouter = router({
     .query(async ({ input }) => {
       const { references, from, to, timezone, filter } = input;
       const refIn = sql.join(references.map((r) => sql`${r}`), sql`, `);
-      const type = {
-        activator: "" as string, reference: "" as string, parkName: "" as string,
-        mode: "" as string, band: "" as string, startTime: new Date(), lastSeen: new Date(),
-      };
+      type Row = { activator: string; reference: string; parkName: string; mode: string; band: string; startTime: Date; lastSeen: Date };
       if (filter) {
         const m = filterMatchExpr(filter.dimension, filter.value, timezone);
         const result = await getDb().execute(sql`
@@ -352,7 +349,7 @@ export const spotsRouter = router({
           ORDER BY MIN(spot_time) DESC
           LIMIT 200
         `);
-        return Array.from(result) as (typeof type)[];
+        return Array.from(result) as Row[];
       }
       const result = await getDb().execute(sql`
         SELECT activator, reference, park_name AS "parkName", mode, band,
@@ -370,6 +367,6 @@ export const spotsRouter = router({
         ORDER BY MIN(spot_time) DESC
         LIMIT 200
       `);
-      return Array.from(result) as (typeof type)[];
+      return Array.from(result) as Row[];
     }),
 });
