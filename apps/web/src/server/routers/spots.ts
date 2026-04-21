@@ -305,4 +305,57 @@ export const spotsRouter = router({
         lon: string;
       }[];
     }),
+
+  activationsForPark: publicProcedure
+    .input(z.object({
+      references: z.array(z.string()).min(1),
+      from: z.string(),
+      to: z.string(),
+      timezone: z.string().default("UTC"),
+      filter: z.object({ dimension: dimensionEnum, value: z.string() }).optional(),
+    }))
+    .query(async ({ input }) => {
+      const { references, from, to, timezone, filter } = input;
+      const refIn = sql.join(references.map((r) => sql`${r}`), sql`, `);
+      const type = {
+        activator: "" as string, reference: "" as string, parkName: "" as string,
+        mode: "" as string, band: "" as string, startTime: new Date(), lastSeen: new Date(),
+      };
+      if (filter) {
+        const m = filterMatchExpr(filter.dimension, filter.value, timezone);
+        const result = await getDb().execute(sql`
+          SELECT activator, reference, park_name AS "parkName", mode, band,
+            MIN(spot_time) AS "startTime", MAX(last_seen_at) AS "lastSeen"
+          FROM (
+            SELECT *, ${bandCase} AS band
+            FROM spots
+            WHERE reference IN (${refIn})
+              AND last_seen_at >= ${from}::timestamptz
+              AND last_seen_at < ${to}::timestamptz
+              AND ${m}
+          ) s
+          GROUP BY activator, reference, park_name, mode, band,
+            DATE(timezone(${timezone}, spot_time))
+          ORDER BY MIN(spot_time) DESC
+          LIMIT 200
+        `);
+        return Array.from(result) as (typeof type)[];
+      }
+      const result = await getDb().execute(sql`
+        SELECT activator, reference, park_name AS "parkName", mode, band,
+          MIN(spot_time) AS "startTime", MAX(last_seen_at) AS "lastSeen"
+        FROM (
+          SELECT *, ${bandCase} AS band
+          FROM spots
+          WHERE reference IN (${refIn})
+            AND last_seen_at >= ${from}::timestamptz
+            AND last_seen_at < ${to}::timestamptz
+        ) s
+        GROUP BY activator, reference, park_name, mode, band,
+          DATE(timezone(${timezone}, spot_time))
+        ORDER BY MIN(spot_time) DESC
+        LIMIT 200
+      `);
+      return Array.from(result) as (typeof type)[];
+    }),
 });

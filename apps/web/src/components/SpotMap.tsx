@@ -17,6 +17,7 @@ interface MapPoint {
 
 interface Props {
   points: MapPoint[];
+  onSelect?: (references: string[], label: string) => void;
 }
 
 // Fix default marker icon paths broken by webpack
@@ -27,7 +28,7 @@ L.Icon.Default.mergeOptions({
   shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
 });
 
-export function SpotMap({ points }: Props) {
+export function SpotMap({ points, onSelect }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
 
@@ -52,9 +53,9 @@ export function SpotMap({ points }: Props) {
     const map = mapRef.current;
     if (!map || points.length === 0) return;
 
-    const cluster = (
-      L as unknown as { markerClusterGroup: () => L.LayerGroup }
-    ).markerClusterGroup();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const clusterGroup = (L as any).markerClusterGroup({ zoomToBoundsOnClick: !onSelect });
+    const markerMeta = new Map<L.Marker, { reference: string; label: string }>();
 
     for (const p of points) {
       if (p.lat == null || p.lon == null) continue;
@@ -62,17 +63,31 @@ export function SpotMap({ points }: Props) {
       const lon = parseFloat(p.lon);
       if (isNaN(lat) || isNaN(lon)) continue;
       const marker = L.marker([lat, lon]);
-      if (p.reference || p.parkName) {
+      const label = [p.reference, p.parkName].filter(Boolean).join(" · ");
+      if (p.reference) markerMeta.set(marker, { reference: p.reference, label });
+      if (onSelect) {
+        marker.on("click", () => {
+          if (p.reference) onSelect([p.reference], label);
+        });
+      } else if (p.reference || p.parkName) {
         marker.bindPopup(`<strong>${p.reference ?? ""}</strong><br/>${p.parkName ?? ""}`);
       }
-      cluster.addLayer(marker);
+      clusterGroup.addLayer(marker);
     }
 
-    map.addLayer(cluster);
-    return () => {
-      map.removeLayer(cluster);
-    };
-  }, [points]);
+    if (onSelect) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      clusterGroup.on("clusterclick", (e: any) => {
+        const children: L.Marker[] = e.layer.getAllChildMarkers();
+        const refs = children.map((m) => markerMeta.get(m)?.reference).filter((r): r is string => !!r);
+        const unique = [...new Set(refs)];
+        if (unique.length > 0) onSelect(unique, `${unique.length} parks`);
+      });
+    }
+
+    map.addLayer(clusterGroup);
+    return () => { map.removeLayer(clusterGroup); };
+  }, [points, onSelect]);
 
   return (
     <div ref={containerRef} className="w-full rounded-xl overflow-hidden" style={{ height: 400 }} />

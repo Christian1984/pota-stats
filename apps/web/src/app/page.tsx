@@ -2,6 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { useMemo, useState } from "react";
+import { ActivationPanel } from "@/components/ActivationPanel";
 import { BarChartCard } from "@/components/BarChartCard";
 import { trpc } from "@/lib/trpc";
 import { BAND_ORDER, DOW_LABELS, HOUR_LABELS } from "@/lib/labels";
@@ -41,9 +42,8 @@ export default function Dashboard() {
     toISODate(new Date(Date.now() - 30 * 86_400_000))
   );
   const [customTo, setCustomTo] = useState(() => toISODate(new Date()));
-  const [activeFilter, setActiveFilter] = useState<{ chartId: ChartId; value: string } | null>(
-    null
-  );
+  const [activeFilter, setActiveFilter] = useState<{ chartId: ChartId; value: string } | null>(null);
+  const [selectedPark, setSelectedPark] = useState<{ references: string[]; label: string } | null>(null);
 
   const { from, to } = useMemo(() => {
     const fallback = () => ({
@@ -86,6 +86,15 @@ export default function Dashboard() {
     timezone,
     filter: filterFor("region"),
   });
+  const parkActivations = trpc.spots.activationsForPark.useQuery(
+    {
+      references: selectedPark?.references ?? [],
+      from, to, timezone,
+      filter: activeFilter ? { dimension: activeFilter.chartId, value: activeFilter.value } : undefined,
+    },
+    { enabled: !!selectedPark }
+  );
+
   const mapPoints = trpc.spots.mapPoints.useQuery({
     from,
     to,
@@ -277,7 +286,24 @@ export default function Dashboard() {
         <h2 className="text-sm font-semibold text-slate-300 uppercase tracking-wide mb-3">
           Park Locations
         </h2>
-        <SpotMap points={mapPoints.data ?? []} />
+        <div className="flex flex-col md:flex-row gap-4">
+          <div className={selectedPark ? "md:flex-[2] min-w-0" : "flex-1"}>
+            <SpotMap
+              points={mapPoints.data ?? []}
+              onSelect={(references, label) => setSelectedPark({ references, label })}
+            />
+          </div>
+          {selectedPark && (
+            <div className="md:flex-1 min-w-0 md:h-[400px] max-h-64 md:max-h-none overflow-y-auto md:overflow-visible">
+              <ActivationPanel
+                label={selectedPark.label}
+                activations={parkActivations.data ?? []}
+                loading={parkActivations.isLoading}
+                onClose={() => setSelectedPark(null)}
+              />
+            </div>
+          )}
+        </div>
       </div>
     </main>
   );
