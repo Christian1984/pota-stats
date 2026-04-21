@@ -1,8 +1,6 @@
 import { render } from "@testing-library/react";
 import React from "react";
 
-// Leaflet requires a real DOM and browser APIs not available in jsdom.
-// The side-effect import "leaflet.markercluster" is mocked to avoid patching L at module load.
 jest.mock("leaflet.markercluster", () => ({}));
 jest.mock("leaflet", () => ({
   __esModule: true,
@@ -12,8 +10,14 @@ jest.mock("leaflet", () => ({
       removeLayer: jest.fn(),
     })),
     tileLayer: jest.fn(() => ({ addTo: jest.fn() })),
-    marker: jest.fn(() => ({ bindPopup: jest.fn().mockReturnThis() })),
-    markerClusterGroup: jest.fn(() => ({ addLayer: jest.fn() })),
+    marker: jest.fn(() => ({
+      bindPopup: jest.fn().mockReturnThis(),
+      on: jest.fn(),
+    })),
+    markerClusterGroup: jest.fn(() => ({
+      addLayer: jest.fn(),
+      on: jest.fn(),
+    })),
     Icon: {
       Default: {
         prototype: {},
@@ -59,14 +63,17 @@ describe("SpotMap", () => {
 
   it("skips points where lat or lon is null", () => {
     render(
-      <SpotMap points={[{ reference: "K-0001", parkName: "Test Park", lat: null, lon: null }]} />
+      <SpotMap
+        points={[{ reference: "K-0001", parkName: "Test Park", lat: null, lon: null }]}
+      />
     );
     expect(getL().marker).not.toHaveBeenCalled();
   });
 
   it("skips points with non-numeric coordinate strings", () => {
     render(
-      <SpotMap points={[{ reference: "K-0001", parkName: "Park", lat: "invalid", lon: "bad" }]} />
+      <SpotMap points={[{ reference: "K-0001", parkName: "Park", lat: "invalid", lon: "bad" }]}
+      />
     );
     expect(getL().marker).not.toHaveBeenCalled();
   });
@@ -84,7 +91,7 @@ describe("SpotMap", () => {
   });
 
   it("adds all markers to the cluster group", () => {
-    const mockCluster = { addLayer: jest.fn() };
+    const mockCluster = { addLayer: jest.fn(), on: jest.fn() };
     (getL().markerClusterGroup as jest.Mock).mockReturnValue(mockCluster);
 
     render(
@@ -96,5 +103,83 @@ describe("SpotMap", () => {
       />
     );
     expect(mockCluster.addLayer).toHaveBeenCalledTimes(2);
+  });
+
+  describe("onSelect prop", () => {
+    it("binds a click handler on each marker when onSelect is provided", () => {
+      const onSelect = jest.fn();
+      render(
+        <SpotMap
+          points={[{ reference: "K-0001", parkName: "Test Park", lat: "45.0", lon: "-93.5" }]}
+          onSelect={onSelect}
+        />
+      );
+      const mockMarkerInstance = (getL().marker as jest.Mock).mock.results[0].value;
+      expect(mockMarkerInstance.on).toHaveBeenCalledWith("click", expect.any(Function));
+    });
+
+    it("calls onSelect with the reference and label when a marker is clicked", () => {
+      const onSelect = jest.fn();
+      render(
+        <SpotMap
+          points={[{ reference: "K-0001", parkName: "Test Park", lat: "45.0", lon: "-93.5" }]}
+          onSelect={onSelect}
+        />
+      );
+      const mockMarkerInstance = (getL().marker as jest.Mock).mock.results[0].value;
+      const [, handler] = mockMarkerInstance.on.mock.calls[0];
+      handler();
+      expect(onSelect).toHaveBeenCalledWith(["K-0001"], "K-0001 · Test Park");
+    });
+
+    it("does NOT call onSelect for a point with no reference", () => {
+      const onSelect = jest.fn();
+      render(
+        <SpotMap
+          points={[{ reference: null, parkName: "Test Park", lat: "45.0", lon: "-93.5" }]}
+          onSelect={onSelect}
+        />
+      );
+      const mockMarkerInstance = (getL().marker as jest.Mock).mock.results[0].value;
+      const [, handler] = mockMarkerInstance.on.mock.calls[0];
+      handler();
+      expect(onSelect).not.toHaveBeenCalled();
+    });
+
+    it("registers a clusterclick handler on the cluster group when onSelect is provided", () => {
+      const onSelect = jest.fn();
+      const mockCluster = { addLayer: jest.fn(), on: jest.fn() };
+      (getL().markerClusterGroup as jest.Mock).mockReturnValue(mockCluster);
+
+      render(
+        <SpotMap
+          points={[{ reference: "K-0001", parkName: "Park A", lat: "45.0", lon: "-93.5" }]}
+          onSelect={onSelect}
+        />
+      );
+      expect(mockCluster.on).toHaveBeenCalledWith("clusterclick", expect.any(Function));
+    });
+
+    it("does NOT bind a popup when onSelect is provided (click replaces popup)", () => {
+      const onSelect = jest.fn();
+      render(
+        <SpotMap
+          points={[{ reference: "K-0001", parkName: "Test Park", lat: "45.0", lon: "-93.5" }]}
+          onSelect={onSelect}
+        />
+      );
+      const mockMarkerInstance = (getL().marker as jest.Mock).mock.results[0].value;
+      expect(mockMarkerInstance.bindPopup).not.toHaveBeenCalled();
+    });
+
+    it("still binds popups when onSelect is NOT provided", () => {
+      render(
+        <SpotMap
+          points={[{ reference: "K-0001", parkName: "Test Park", lat: "45.0", lon: "-93.5" }]}
+        />
+      );
+      const mockMarkerInstance = (getL().marker as jest.Mock).mock.results[0].value;
+      expect(mockMarkerInstance.bindPopup).toHaveBeenCalled();
+    });
   });
 });
