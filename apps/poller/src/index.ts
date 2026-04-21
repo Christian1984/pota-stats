@@ -5,6 +5,8 @@ const DATABASE_URL = process.env.DATABASE_URL;
 if (!DATABASE_URL) throw new Error("DATABASE_URL is required");
 
 const POLL_INTERVAL_MINUTES = Math.max(1, parseInt(process.env.POLL_INTERVAL_MINUTES ?? "10", 10));
+const JITTER_MIN_SECONDS = Math.max(0, parseInt(process.env.JITTER_MIN_SECONDS ?? "5", 10));
+const JITTER_MAX_SECONDS = Math.max(JITTER_MIN_SECONDS, parseInt(process.env.JITTER_MAX_SECONDS ?? "15", 10));
 
 const db = createDb(DATABASE_URL);
 
@@ -83,7 +85,7 @@ function scheduleNext() {
   const now = new Date();
   const ms = POLL_INTERVAL_MINUTES * 60 * 1000;
   const msIntoHour = (now.getMinutes() * 60 + now.getSeconds()) * 1000 + now.getMilliseconds();
-  const jitter = (5 + Math.random() * 10) * 1000;
+  const jitter = (JITTER_MIN_SECONDS + Math.random() * (JITTER_MAX_SECONDS - JITTER_MIN_SECONDS)) * 1000;
   const delay = ms - (msIntoHour % ms) + jitter;
   const nextTick = new Date(now.getTime() + delay);
   console.log(`Next poll at ${nextTick.toISOString()}`);
@@ -95,6 +97,7 @@ function scheduleNext() {
 
 scheduleNext();
 console.log(`Poller running — fetching at every ${POLL_INTERVAL_MINUTES}-minute mark of the hour`);
+console.log(`User-Agent: ${USER_AGENT}`);
 
 async function runMigrations() {
   try {
