@@ -69,7 +69,7 @@ export function ActivationPanel({ label, activations, loading, onClose }: Props)
       ) : (
         <div className="flex-1 overflow-y-auto min-h-0">
           {(() => {
-            const multiPark = new Set(activations.map((a) => a.reference)).size > 1;
+            const multiPark = new Set(activations.map((a) => a.reference).filter(Boolean)).size > 1;
             return (
               <table className="w-full text-xs">
                 <thead className="sticky top-0 bg-slate-800">
@@ -102,9 +102,11 @@ export function ActivationPanel({ label, activations, loading, onClose }: Props)
         </div>
       )}
 
-      <p className="text-slate-500 text-xs mt-2 shrink-0">
-        {activations.length} activation{activations.length !== 1 ? "s" : ""}
-      </p>
+      {activations.length > 0 && (
+        <p className="text-slate-500 text-xs mt-2 shrink-0">
+          {activations.length} activation{activations.length !== 1 ? "s" : ""}
+        </p>
+      )}
     </div>
   );
 }
