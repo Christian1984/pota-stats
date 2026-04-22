@@ -25,6 +25,7 @@ interface Props {
   isOwner?: boolean;
   activeValue?: string;
   filterActive?: boolean;
+  animate?: boolean;
   onBarClick?: (value: string) => void;
 }
 
@@ -35,6 +36,7 @@ export function BarChartCard({
   isOwner,
   activeValue,
   filterActive,
+  animate = true,
   onBarClick,
 }: Props) {
   const showStacked = filterActive && !isOwner;
@@ -154,6 +156,7 @@ export function BarChartCard({
                 dataKey="count"
                 fill="#22d3ee"
                 radius={[3, 3, 0, 0]}
+                isAnimationActive={animate}
                 style={{ cursor: onBarClick ? "pointer" : undefined }}
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 onClick={(d: any) => onBarClick?.(d.filterValue ?? d.label)}

@@ -47,7 +47,7 @@ async function poll() {
       mode: s.mode ?? null,
       reference: s.reference ?? null,
       parkName: s.name ?? null,
-      spotTime: new Date(s.spotTime),
+      spotTime: new Date(s.spotTime + "Z"),
       spotter: s.spotter ?? null,
       comments: s.comments ?? null,
       source: s.source ?? null,
@@ -132,6 +132,16 @@ async function runMigrations() {
       sql`UPDATE spots SET last_seen_at = COALESCE(recorded_at, spot_time) WHERE last_seen_at IS NULL`
     );
     await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_spots_last_seen_at ON spots(last_seen_at)`);
+    await db.execute(sql`
+      CREATE INDEX IF NOT EXISTS idx_spots_activation
+        ON spots (last_seen_at, activator, reference, spot_time)
+        WHERE activator IS NOT NULL AND reference IS NOT NULL
+    `);
+    await db.execute(sql`
+      CREATE INDEX IF NOT EXISTS idx_spots_activation_freq
+        ON spots (last_seen_at, activator, reference, frequency, spot_time)
+        WHERE activator IS NOT NULL AND reference IS NOT NULL AND frequency IS NOT NULL
+    `);
     console.log("Database schema ready");
   } catch (err) {
     console.error("Migration failed:", err);

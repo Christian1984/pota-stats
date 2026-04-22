@@ -21,6 +21,10 @@ END`);
 
 const noQrt = sql.raw(`(mode IS NULL OR UPPER(mode) != 'QRT')`);
 
+function actDate(timezone: string) {
+  return sql`DATE(timezone(${timezone}, spot_time))`;
+}
+
 const dimensionEnum = z.enum(["hour", "dow", "band", "mode", "region"]);
 type Dimension = z.infer<typeof dimensionEnum>;
 
@@ -31,7 +35,7 @@ const chartInput = z.object({
   filter: z.object({ dimension: dimensionEnum, value: z.string() }).optional(),
 });
 
-function filterMatchExpr(dim: Dimension, value: string, timezone: string) {
+export function filterMatchExpr(dim: Dimension, value: string, timezone: string) {
   switch (dim) {
     case "mode":
       return sql`mode = ${value}`;
@@ -40,22 +44,54 @@ function filterMatchExpr(dim: Dimension, value: string, timezone: string) {
     case "region":
       return sql`SPLIT_PART(location_desc, '-', 1) = ${value}`;
     case "hour":
-      return sql`EXTRACT(HOUR FROM timezone(${timezone}, last_seen_at))::int = ${parseInt(value, 10)}`;
+      return sql`EXTRACT(HOUR FROM timezone(${timezone}, spot_time))::int = ${parseInt(value, 10)}`;
     case "dow":
-      return sql`EXTRACT(DOW FROM timezone(${timezone}, last_seen_at))::int = ${parseInt(value, 10)}`;
+      return sql`EXTRACT(DOW FROM timezone(${timezone}, spot_time))::int = ${parseInt(value, 10)}`;
   }
 }
 
 export const spotsRouter = router({
-  stats: publicProcedure.query(async () => {
-    const [row] = await getDb()
-      .select({
-        total: sql<number>`COUNT(*)::int`,
-        lastInserted: sql<Date | null>`MAX(COALESCE(last_seen_at, recorded_at))`,
-      })
-      .from(spots);
-    return row ?? { total: 0, lastInserted: null };
-  }),
+  stats: publicProcedure
+    .input(z.object({ from: z.string(), to: z.string() }))
+    .query(async ({ input }) => {
+      const { from, to } = input;
+      const db = getDb();
+      const [meta] = await db
+        .select({ lastInserted: sql<Date | null>`MAX(COALESCE(last_seen_at, recorded_at))` })
+        .from(spots);
+
+      const [totalRow] = await db.execute(sql`
+        SELECT COUNT(*)::int AS total
+        FROM (
+          SELECT DISTINCT activator, reference,
+            DATE(timezone('UTC', spot_time)) AS act_date
+          FROM spots
+          WHERE activator IS NOT NULL
+            AND reference IS NOT NULL
+            AND ${noQrt}
+        ) a
+      `);
+
+      const [rangeRow] = await db.execute(sql`
+        SELECT COUNT(*)::int AS total
+        FROM (
+          SELECT DISTINCT activator, reference,
+            DATE(timezone('UTC', spot_time)) AS act_date
+          FROM spots
+          WHERE last_seen_at >= ${from}::timestamptz
+            AND spot_time <= ${to}::timestamptz
+            AND activator IS NOT NULL
+            AND reference IS NOT NULL
+            AND ${noQrt}
+        ) a
+      `);
+
+      return {
+        total: (totalRow?.total as number) ?? 0,
+        rangeTotal: (rangeRow?.total as number) ?? 0,
+        lastInserted: meta?.lastInserted ?? null,
+      };
+    }),
 
   byHour: publicProcedure.input(chartInput).query(async ({ input }) => {
     const { from, to, timezone, filter } = input;
@@ -65,16 +101,20 @@ export const spotsRouter = router({
         SELECT hour, COUNT(*)::int AS count,
           SUM(CASE WHEN matches_filter THEN 1 ELSE 0 END)::int AS "filteredCount"
         FROM (
-          SELECT activator, reference, hour, BOOL_OR(${m}) AS matches_filter
+          SELECT activator, reference, act_date, hour,
+            BOOL_OR(matches_filter) AS matches_filter
           FROM (
-            SELECT *, EXTRACT(HOUR FROM timezone(${timezone}, last_seen_at))::int AS hour
+            SELECT *,
+              ${actDate(timezone)} AS act_date,
+              EXTRACT(HOUR FROM timezone(${timezone}, spot_time))::int AS hour,
+              ${m} AS matches_filter
             FROM spots
             WHERE last_seen_at >= ${from}::timestamptz
-              AND last_seen_at < ${to}::timestamptz
+              AND spot_time <= ${to}::timestamptz
               AND activator IS NOT NULL AND reference IS NOT NULL
               AND ${noQrt}
           ) s
-          GROUP BY activator, reference, hour
+          GROUP BY activator, reference, act_date, hour
         ) a
         GROUP BY hour ORDER BY 1
       `);
@@ -84,10 +124,11 @@ export const spotsRouter = router({
       SELECT hour, COUNT(*)::int AS count
       FROM (
         SELECT DISTINCT activator, reference,
-          EXTRACT(HOUR FROM timezone(${timezone}, last_seen_at))::int AS hour
+          ${actDate(timezone)} AS act_date,
+          EXTRACT(HOUR FROM timezone(${timezone}, spot_time))::int AS hour
         FROM spots
         WHERE last_seen_at >= ${from}::timestamptz
-          AND last_seen_at < ${to}::timestamptz
+          AND spot_time <= ${to}::timestamptz
           AND activator IS NOT NULL AND reference IS NOT NULL
           AND ${noQrt}
       ) a
@@ -107,16 +148,20 @@ export const spotsRouter = router({
         SELECT dow, COUNT(*)::int AS count,
           SUM(CASE WHEN matches_filter THEN 1 ELSE 0 END)::int AS "filteredCount"
         FROM (
-          SELECT activator, reference, dow, BOOL_OR(${m}) AS matches_filter
+          SELECT activator, reference, act_date, dow,
+            BOOL_OR(matches_filter) AS matches_filter
           FROM (
-            SELECT *, EXTRACT(DOW FROM timezone(${timezone}, last_seen_at))::int AS dow
+            SELECT *,
+              ${actDate(timezone)} AS act_date,
+              EXTRACT(DOW FROM timezone(${timezone}, spot_time))::int AS dow,
+              ${m} AS matches_filter
             FROM spots
             WHERE last_seen_at >= ${from}::timestamptz
-              AND last_seen_at < ${to}::timestamptz
+              AND spot_time <= ${to}::timestamptz
               AND activator IS NOT NULL AND reference IS NOT NULL
               AND ${noQrt}
           ) s
-          GROUP BY activator, reference, dow
+          GROUP BY activator, reference, act_date, dow
         ) a
         GROUP BY dow ORDER BY 1
       `);
@@ -126,10 +171,11 @@ export const spotsRouter = router({
       SELECT dow, COUNT(*)::int AS count
       FROM (
         SELECT DISTINCT activator, reference,
-          EXTRACT(DOW FROM timezone(${timezone}, last_seen_at))::int AS dow
+          ${actDate(timezone)} AS act_date,
+          EXTRACT(DOW FROM timezone(${timezone}, spot_time))::int AS dow
         FROM spots
         WHERE last_seen_at >= ${from}::timestamptz
-          AND last_seen_at < ${to}::timestamptz
+          AND spot_time <= ${to}::timestamptz
           AND activator IS NOT NULL AND reference IS NOT NULL
           AND ${noQrt}
       ) a
@@ -149,17 +195,18 @@ export const spotsRouter = router({
         SELECT band, COUNT(*)::int AS count,
           SUM(CASE WHEN matches_filter THEN 1 ELSE 0 END)::int AS "filteredCount"
         FROM (
-          SELECT activator, reference, band, BOOL_OR(${m}) AS matches_filter
+          SELECT activator, reference, band, act_date,
+            BOOL_OR(${m}) AS matches_filter
           FROM (
-            SELECT *, ${bandCase} AS band
+            SELECT *, ${bandCase} AS band, ${actDate(timezone)} AS act_date
             FROM spots
             WHERE last_seen_at >= ${from}::timestamptz
-              AND last_seen_at < ${to}::timestamptz
+              AND spot_time <= ${to}::timestamptz
               AND frequency IS NOT NULL
               AND activator IS NOT NULL AND reference IS NOT NULL
               AND ${noQrt}
           ) s
-          GROUP BY activator, reference, band
+          GROUP BY activator, reference, band, act_date
         ) a
         GROUP BY band ORDER BY count DESC
       `);
@@ -168,10 +215,12 @@ export const spotsRouter = router({
     const result = await getDb().execute(sql`
       SELECT band, COUNT(*)::int AS count
       FROM (
-        SELECT DISTINCT activator, reference, ${bandCase} AS band
+        SELECT DISTINCT activator, reference,
+          ${actDate(timezone)} AS act_date,
+          ${bandCase} AS band
         FROM spots
         WHERE last_seen_at >= ${from}::timestamptz
-          AND last_seen_at < ${to}::timestamptz
+          AND spot_time <= ${to}::timestamptz
           AND frequency IS NOT NULL
           AND activator IS NOT NULL AND reference IS NOT NULL
           AND ${noQrt}
@@ -192,16 +241,17 @@ export const spotsRouter = router({
         SELECT mode, COUNT(*)::int AS count,
           SUM(CASE WHEN matches_filter THEN 1 ELSE 0 END)::int AS "filteredCount"
         FROM (
-          SELECT activator, reference, mode, BOOL_OR(${m}) AS matches_filter
+          SELECT activator, reference, mode, act_date,
+            BOOL_OR(${m}) AS matches_filter
           FROM (
-            SELECT *
+            SELECT *, ${actDate(timezone)} AS act_date
             FROM spots
             WHERE last_seen_at >= ${from}::timestamptz
-              AND last_seen_at < ${to}::timestamptz
+              AND spot_time <= ${to}::timestamptz
               AND activator IS NOT NULL AND reference IS NOT NULL
               AND ${noQrt}
           ) s
-          GROUP BY activator, reference, mode
+          GROUP BY activator, reference, mode, act_date
         ) a
         GROUP BY mode ORDER BY count DESC
       `);
@@ -210,10 +260,12 @@ export const spotsRouter = router({
     const result = await getDb().execute(sql`
       SELECT mode, COUNT(*)::int AS count
       FROM (
-        SELECT DISTINCT activator, reference, mode
+        SELECT DISTINCT activator, reference,
+          ${actDate(timezone)} AS act_date,
+          mode
         FROM spots
         WHERE last_seen_at >= ${from}::timestamptz
-          AND last_seen_at < ${to}::timestamptz
+          AND spot_time <= ${to}::timestamptz
           AND activator IS NOT NULL AND reference IS NOT NULL
           AND ${noQrt}
       ) a
@@ -233,17 +285,19 @@ export const spotsRouter = router({
         SELECT region, COUNT(*)::int AS count,
           SUM(CASE WHEN matches_filter THEN 1 ELSE 0 END)::int AS "filteredCount"
         FROM (
-          SELECT activator, reference, region, BOOL_OR(${m}) AS matches_filter
+          SELECT activator, reference, region, act_date,
+            BOOL_OR(${m}) AS matches_filter
           FROM (
-            SELECT *, SPLIT_PART(location_desc, '-', 1) AS region
+            SELECT *, SPLIT_PART(location_desc, '-', 1) AS region,
+              ${actDate(timezone)} AS act_date
             FROM spots
             WHERE last_seen_at >= ${from}::timestamptz
-              AND last_seen_at < ${to}::timestamptz
+              AND spot_time <= ${to}::timestamptz
               AND location_desc IS NOT NULL
               AND activator IS NOT NULL AND reference IS NOT NULL
               AND ${noQrt}
           ) s
-          GROUP BY activator, reference, region
+          GROUP BY activator, reference, region, act_date
         ) a
         GROUP BY region ORDER BY count DESC LIMIT 20
       `);
@@ -252,10 +306,12 @@ export const spotsRouter = router({
     const result = await getDb().execute(sql`
       SELECT region, COUNT(*)::int AS count
       FROM (
-        SELECT DISTINCT activator, reference, SPLIT_PART(location_desc, '-', 1) AS region
+        SELECT DISTINCT activator, reference,
+          ${actDate(timezone)} AS act_date,
+          SPLIT_PART(location_desc, '-', 1) AS region
         FROM spots
         WHERE last_seen_at >= ${from}::timestamptz
-          AND last_seen_at < ${to}::timestamptz
+          AND spot_time <= ${to}::timestamptz
           AND location_desc IS NOT NULL
           AND activator IS NOT NULL AND reference IS NOT NULL
           AND ${noQrt}
@@ -279,15 +335,15 @@ export const spotsRouter = router({
       })
     )
     .query(async ({ input }) => {
-      const { from, to, timezone, filter, limit } = input;
+      const { from, to, filter, limit } = input;
       if (filter) {
-        const m = filterMatchExpr(filter.dimension, filter.value, timezone);
+        const m = filterMatchExpr(filter.dimension, filter.value, input.timezone);
         const result = await getDb().execute(sql`
           SELECT reference, park_name AS "parkName", latitude AS lat, longitude AS lon
           FROM spots
           WHERE latitude IS NOT NULL AND longitude IS NOT NULL
             AND last_seen_at >= ${from}::timestamptz
-            AND last_seen_at < ${to}::timestamptz
+            AND spot_time <= ${to}::timestamptz
             AND ${noQrt}
             AND ${m}
           GROUP BY reference, park_name, latitude, longitude
@@ -305,7 +361,7 @@ export const spotsRouter = router({
         FROM spots
         WHERE latitude IS NOT NULL AND longitude IS NOT NULL
           AND last_seen_at >= ${from}::timestamptz
-          AND last_seen_at < ${to}::timestamptz
+          AND spot_time <= ${to}::timestamptz
           AND ${noQrt}
         GROUP BY reference, park_name, latitude, longitude
         LIMIT ${limit}
@@ -340,7 +396,7 @@ export const spotsRouter = router({
             FROM spots
             WHERE reference IN (${refIn})
               AND last_seen_at >= ${from}::timestamptz
-              AND last_seen_at < ${to}::timestamptz
+              AND spot_time <= ${to}::timestamptz
               AND ${noQrt}
               AND ${m}
           ) s
@@ -359,7 +415,7 @@ export const spotsRouter = router({
           FROM spots
           WHERE reference IN (${refIn})
             AND last_seen_at >= ${from}::timestamptz
-            AND last_seen_at < ${to}::timestamptz
+            AND spot_time <= ${to}::timestamptz
             AND ${noQrt}
         ) s
         GROUP BY activator, reference, park_name, mode, band,

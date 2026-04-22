@@ -23,7 +23,7 @@ const PRESETS = [
   { label: "1y", days: 365 },
 ] as const;
 
-type PresetLabel = (typeof PRESETS)[number]["label"] | "custom";
+type PresetLabel = (typeof PRESETS)[number]["label"] | "custom" | "all";
 type ChartId = "hour" | "dow" | "band" | "mode" | "region";
 
 function toISODate(d: Date) {
@@ -38,7 +38,7 @@ function parseDate(s: string, endOfDay = false): Date | null {
 export default function Dashboard() {
   const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
-  const [preset, setPreset] = useState<PresetLabel>("30d");
+  const [preset, setPreset] = useState<PresetLabel>("all");
   const [customFrom, setCustomFrom] = useState(() =>
     toISODate(new Date(Date.now() - 30 * 86_400_000))
   );
@@ -46,12 +46,16 @@ export default function Dashboard() {
   const [activeFilter, setActiveFilter] = useState<{ chartId: ChartId; value: string } | null>(null);
   const [selectedPark, setSelectedPark] = useState<{ references: string[]; label: string } | null>(null);
   const [refreshedAt, setRefreshedAt] = useState(() => Date.now());
+  const [animate, setAnimate] = useState(true);
 
   const { from, to } = useMemo(() => {
     const fallback = () => ({
       from: new Date(refreshedAt - 30 * 86_400_000).toISOString(),
       to: new Date(refreshedAt).toISOString(),
     });
+    if (preset === "all") {
+      return { from: new Date(0).toISOString(), to: new Date(refreshedAt).toISOString() };
+    }
     if (preset === "custom") {
       const f = parseDate(customFrom);
       const t = parseDate(customTo, true);
@@ -76,19 +80,28 @@ export default function Dashboard() {
     return { dimension: activeFilter.chartId, value: activeFilter.value };
   }
 
+  useEffect(() => {
+    setAnimate(true);
+  }, [preset, customFrom, customTo, activeFilter]);
+
   const utils = trpc.useUtils();
 
   const refresh = useCallback(() => {
+    setAnimate(true);
     setRefreshedAt(Date.now());
     utils.spots.stats.invalidate();
   }, [utils]);
 
   useEffect(() => {
-    const id = setInterval(refresh, 5 * 60 * 1000);
+    const id = setInterval(() => {
+      setAnimate(false);
+      setRefreshedAt(Date.now());
+      utils.spots.stats.invalidate();
+    }, 5 * 60 * 1000);
     return () => clearInterval(id);
-  }, [refresh]);
+  }, [utils]);
 
-  const stats = trpc.spots.stats.useQuery();
+  const stats = trpc.spots.stats.useQuery({ from, to });
   const byHour = trpc.spots.byHour.useQuery({ from, to, timezone, filter: filterFor("hour") });
   const byWeekday = trpc.spots.byWeekday.useQuery({ from, to, timezone, filter: filterFor("dow") });
   const byBand = trpc.spots.byBand.useQuery({ from, to, timezone, filter: filterFor("band") });
@@ -172,7 +185,13 @@ export default function Dashboard() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight">POTA Stats</h1>
           <p className="text-slate-400 text-sm mt-0.5">
-            {stats.data?.total?.toLocaleString() ?? "…"} spots · last updated {lastUpdated}
+            {stats.data?.total?.toLocaleString() ?? "…"} activations total
+            {preset !== "all" && stats.data?.rangeTotal !== undefined && (
+              <> · {stats.data.rangeTotal.toLocaleString()} in range</>
+            )}
+          </p>
+          <p className="text-slate-400 text-sm">
+            last updated {lastUpdated}
             <RefreshButton isFetching={isFetching} onRefresh={refresh} />
           </p>
         </div>
@@ -181,7 +200,32 @@ export default function Dashboard() {
         <div className="flex flex-col items-end gap-2">
           <div className="flex items-center gap-2">
             <span className="text-slate-400 text-sm">Range</span>
-            <div className="flex rounded-lg overflow-hidden border border-slate-700">
+
+            {/* Mobile: dropdown */}
+            <select
+              value={preset}
+              onChange={(e) => setPreset(e.target.value as PresetLabel)}
+              className="sm:hidden bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:border-cyan-500"
+            >
+              <option value="all">All</option>
+              {PRESETS.map((p) => (
+                <option key={p.label} value={p.label}>{p.label}</option>
+              ))}
+              <option value="custom">Custom</option>
+            </select>
+
+            {/* Desktop: button group */}
+            <div className="hidden sm:flex rounded-lg overflow-hidden border border-slate-700">
+              <button
+                onClick={() => setPreset("all")}
+                className={`px-3 py-1.5 text-sm transition-colors ${
+                  preset === "all"
+                    ? "bg-cyan-500 text-slate-900 font-semibold"
+                    : "bg-slate-800 text-slate-300 hover:bg-slate-700"
+                }`}
+              >
+                All
+              </button>
               {PRESETS.map((p) => (
                 <button
                   key={p.label}
@@ -234,39 +278,43 @@ export default function Dashboard() {
       {/* Charts grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
         <BarChartCard
-          title="Spots by Hour (local time)"
+          title="Activations by Hour (local time)"
           data={hourData}
           loading={byHour.isLoading}
           isOwner={activeFilter?.chartId === "hour"}
           activeValue={activeFilter?.chartId === "hour" ? activeFilter.value : undefined}
           filterActive={activeFilter !== null}
+          animate={animate}
           onBarClick={(val) => handleBarClick("hour", val)}
         />
         <BarChartCard
-          title="Spots by Weekday"
+          title="Activations by Weekday"
           data={dowData}
           loading={byWeekday.isLoading}
           isOwner={activeFilter?.chartId === "dow"}
           activeValue={activeFilter?.chartId === "dow" ? activeFilter.value : undefined}
           filterActive={activeFilter !== null}
+          animate={animate}
           onBarClick={(val) => handleBarClick("dow", val)}
         />
         <BarChartCard
-          title="Spots by Band"
+          title="Activations by Band"
           data={bandData}
           loading={byBand.isLoading}
           isOwner={activeFilter?.chartId === "band"}
           activeValue={activeFilter?.chartId === "band" ? activeFilter.value : undefined}
           filterActive={activeFilter !== null}
+          animate={animate}
           onBarClick={(val) => handleBarClick("band", val)}
         />
         <BarChartCard
-          title="Spots by Mode"
+          title="Activations by Mode"
           data={modeData}
           loading={byMode.isLoading}
           isOwner={activeFilter?.chartId === "mode"}
           activeValue={activeFilter?.chartId === "mode" ? activeFilter.value : undefined}
           filterActive={activeFilter !== null}
+          animate={animate}
           onBarClick={(val) => handleBarClick("mode", val)}
         />
         <div className="md:col-span-2">
@@ -277,6 +325,7 @@ export default function Dashboard() {
             isOwner={activeFilter?.chartId === "region"}
             activeValue={activeFilter?.chartId === "region" ? activeFilter.value : undefined}
             filterActive={activeFilter !== null}
+            animate={animate}
             onBarClick={(val) => handleBarClick("region", val)}
           />
         </div>

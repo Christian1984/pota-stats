@@ -8,7 +8,7 @@ export default [
     files: ["**/*.{ts,tsx,js,jsx,mjs,cjs}"],
   },
   {
-    files: ["*.config.{js,cjs}", "jest.setup.*"],
+    files: ["*.config.{js,cjs}", "jest.setup.*", "**/__tests__/**"],
     rules: {
       "@typescript-eslint/no-require-imports": "off",
     },
